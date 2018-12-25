@@ -5,10 +5,9 @@ import com.example.im.common.util.Constants.AppVule;
 import com.example.im.service.IAppUserService;
 import com.example.im.zook.IStringCallback;
 import com.example.im.zook.Zookeeper_Constructor_Usage_Simple;
-import org.apache.zookeeper.CreateMode;
-import org.apache.zookeeper.KeeperException;
-import org.apache.zookeeper.ZooDefs;
-import org.apache.zookeeper.ZooKeeper;
+import com.example.im.zook.Zookeeper_GetChild_Async;
+import com.example.im.zook.Zookeeper_GetChild_Sync;
+import org.apache.zookeeper.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -127,7 +126,7 @@ public class ZKController {
 
 
 
-    //删除节点
+    //删除节点,如果版本不对的话,那么删除不成功
 
     @RequestMapping(value = "/delete", method = RequestMethod.POST)
     @ResponseBody
@@ -139,7 +138,7 @@ public class ZKController {
     }
 
 
-    //获取子节点
+    //基本获取子节点
 
     @RequestMapping(value = "/getChildren", method = RequestMethod.POST)
     @ResponseBody
@@ -151,5 +150,21 @@ public class ZKController {
     }
 
 
+    //同步获取子节点
+    @RequestMapping(value = "/getChildren_sync", method = RequestMethod.POST)
+    @ResponseBody
+    public ApiResult getChildren_sync(@RequestParam Map map) throws IOException, InterruptedException, KeeperException {
+        Zookeeper_GetChild_Sync zgs=new Zookeeper_GetChild_Sync(appVule.zkUrl);
+        zgs.init();
+        return ApiResult.success(1);
+    }
+    //异步获取子节点
+    @RequestMapping(value = "/getChildren_async", method = RequestMethod.POST)
+    @ResponseBody
+    public ApiResult getChildren_async(@RequestParam Map map) throws IOException, InterruptedException, KeeperException {
+        Zookeeper_GetChild_Async zgs=new Zookeeper_GetChild_Async(appVule.zkUrl);
+        zgs.init();
+        return ApiResult.success(1);
+    }
 
 }
