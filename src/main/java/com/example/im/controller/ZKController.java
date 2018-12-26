@@ -3,10 +3,7 @@ package com.example.im.controller;
 import com.example.im.common.util.ApiResult;
 import com.example.im.common.util.Constants.AppVule;
 import com.example.im.service.IAppUserService;
-import com.example.im.zook.IStringCallback;
-import com.example.im.zook.Zookeeper_Constructor_Usage_Simple;
-import com.example.im.zook.Zookeeper_GetChild_Async;
-import com.example.im.zook.Zookeeper_GetChild_Sync;
+import com.example.im.zook.*;
 import org.apache.zookeeper.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -166,5 +163,16 @@ public class ZKController {
         zgs.init();
         return ApiResult.success(1);
     }
+
+
+    //同步获取节点数据
+    @RequestMapping(value = "/getdata", method = RequestMethod.POST)
+    @ResponseBody
+    public ApiResult getdata(@RequestParam Map map) throws IOException, InterruptedException, KeeperException {
+        Zookeeper_GetData_Sync zgs=new Zookeeper_GetData_Sync(appVule.zkUrl);
+        zgs.init();
+        return ApiResult.success(1);
+    }
+
 
 }

@@ -134,6 +134,21 @@
 			<version>3.4.12</version>
 		</dependency>
 
+		<!--zkclient 对zookeeper的包装-->
+
+		<dependency>
+			<groupId>com.github.sgroschupf</groupId>
+			<artifactId>zkclient</artifactId>
+			<version>0.1</version>
+		</dependency>
+
+		<!--curator 对zookeeper的包装-->
+		<dependency>
+			<groupId>org.apache.curator</groupId>
+			<artifactId>curator-framework</artifactId>
+			<version>4.1.0</version>
+		</dependency>
+
 
 	</dependencies>
 
