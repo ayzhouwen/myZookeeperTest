@@ -6,10 +6,17 @@ import org.apache.curator.CuratorZookeeperClient;
 import org.apache.curator.RetryPolicy;
 import org.apache.curator.framework.CuratorFramework;
 import org.apache.curator.framework.CuratorFrameworkFactory;
+import org.apache.curator.framework.recipes.atomic.AtomicValue;
+import org.apache.curator.framework.recipes.atomic.DistributedAtomicInteger;
+import org.apache.curator.framework.recipes.barriers.DistributedBarrier;
+import org.apache.curator.framework.recipes.barriers.DistributedDoubleBarrier;
 import org.apache.curator.framework.recipes.cache.*;
 import org.apache.curator.framework.recipes.leader.LeaderSelector;
 import org.apache.curator.framework.recipes.leader.LeaderSelectorListenerAdapter;
+import org.apache.curator.framework.recipes.locks.InterProcessLock;
+import org.apache.curator.framework.recipes.locks.InterProcessMutex;
 import org.apache.curator.retry.ExponentialBackoffRetry;
+import org.apache.curator.retry.RetryNTimes;
 import org.apache.zookeeper.CreateMode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -20,8 +27,11 @@ import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseBody;
 
+import java.text.SimpleDateFormat;
+import java.util.Date;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
 
 @Controller
 @RequestMapping("/curator")
@@ -55,9 +65,22 @@ public class CuratorController {
                  .build();
 
         client.start();
-        client.create().creatingParentsIfNeeded()
-                .withMode(CreateMode.EPHEMERAL)
-                .forPath(path,"init呵呵哒".getBytes());
+        for (int i=0;i<50;i++){
+            new Thread(new Runnable() {
+                @Override
+                public void run() {
+                    try {
+                        client.create().creatingParentsIfNeeded()
+                                .withMode(CreateMode.PERSISTENT)
+                                .forPath(path,"init呵呵哒".getBytes());
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
+                }
+            }).start();
+        }
+
+        log.info("创建成功");
         return ApiResult.success(1);
     }
 
@@ -179,5 +202,209 @@ public class CuratorController {
 
 
     //分布式锁
+
+    @RequestMapping(value = "/lock", method = RequestMethod.POST)
+    @ResponseBody
+    public ApiResult lock(@RequestParam Map map) throws Exception {
+        CuratorFramework client=CuratorFrameworkFactory.builder()
+                .connectString(appVule.zkUrl)
+                .sessionTimeoutMs(5000)
+                .retryPolicy(new ExponentialBackoffRetry(1000,3))
+                .build();
+
+        client.start();
+
+         String lock_path="/mylock";
+        final InterProcessMutex lock=new InterProcessMutex(client,lock_path);
+        final CountDownLatch down=new CountDownLatch(1);
+
+        for (int i=0;i<100;i++){
+            new Thread(new Runnable() {
+                @Override
+                public void run() {
+                    try {
+                        down.await();
+                        lock.acquire();
+                    } catch (InterruptedException e) {
+                        e.printStackTrace();
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
+
+                    SimpleDateFormat sdf=new SimpleDateFormat("HH:mm:ss|SSS");
+                    String orderNo=sdf.format(new Date());
+                    log.info("生成的订单号是 : "+orderNo);
+                    try {
+                        lock.release();
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
+                }
+            }).start();
+        }
+
+        //Thread.sleep(5000);
+
+        down.countDown();
+
+        return ApiResult.success(1);
+    }
+
+
+    //分布式计数器,add函数不保证新增成功,坑
+    @RequestMapping(value = "/atomicInt", method = RequestMethod.POST)
+    @ResponseBody
+    public ApiResult atomicInt(@RequestParam Map map) throws Exception {
+        CuratorFramework client=CuratorFrameworkFactory.builder()
+                .connectString(appVule.zkUrl)
+                .sessionTimeoutMs(5000)
+                .retryPolicy(new ExponentialBackoffRetry(1000,3))
+                .build();
+
+        client.start();
+        String path="/atomic";
+        DistributedAtomicInteger atomicInteger=new DistributedAtomicInteger(client,path,new RetryNTimes(3,1000));
+        int n=100;
+         CountDownLatch down=new CountDownLatch(n);
+        for (int i=0;i<n;i++){
+            new Thread(new Runnable() {
+                @Override
+                public void run() {
+                    try
+                    {
+                        boolean flag=false;
+                        AtomicValue<Integer> rc=null;
+                        while (!flag){
+
+                            rc=atomicInteger.add(1);
+                            flag=rc.succeeded();
+                            log.info("计数新增结果:"+rc.succeeded());
+                        }
+
+                        down.countDown();
+
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
+
+                }
+            }).start();
+        }
+        down.await();
+        log.info("计数器最终结果:Result: "+atomicInteger.get().preValue());
+
+
+        return ApiResult.success(1);
+    }
+
+
+    //分布式Barrier,需要主线程手动删除Barrier不够智能
+
+    static   DistributedBarrier barrier;
+    @RequestMapping(value = "/barrier", method = RequestMethod.POST)
+    @ResponseBody
+    public ApiResult barrier(@RequestParam Map map) throws Exception {
+        CuratorFramework client=CuratorFrameworkFactory.builder()
+                .connectString(appVule.zkUrl)
+                .sessionTimeoutMs(5000)
+                .retryPolicy(new ExponentialBackoffRetry(1000,3))
+                .build();
+
+        client.start();
+
+        String path="/barrier";
+
+        for (int i=0;i<100;i++){
+            new Thread(new Runnable() {
+                @Override
+                public void run() {
+                    CuratorFramework client=CuratorFrameworkFactory.builder()
+                            .connectString(appVule.zkUrl)
+                            .retryPolicy(new ExponentialBackoffRetry(1000,3))
+                            .build();
+                    client.start();
+
+                    barrier=new DistributedBarrier(client,path);
+                    log.info("barrier设置");
+                    try {
+                        barrier.setBarrier();
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
+                    ;
+                    try {
+                        barrier.waitOnBarrier();
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
+
+                    log.info("启动...");
+                }
+            }).start();
+        }
+
+        Thread.sleep(1000*30);
+        barrier.removeBarrier();
+        return ApiResult.success(1);
+    }
+
+
+
+    //分布式Barrier,自动删除Barrier,无需手动设置和全局变量
+
+    @RequestMapping(value = "/auto_barrier", method = RequestMethod.POST)
+    @ResponseBody
+    public ApiResult auto_barrier(@RequestParam Map map) throws Exception {
+        CuratorFramework client=CuratorFrameworkFactory.builder()
+                .connectString(appVule.zkUrl)
+                .sessionTimeoutMs(5000)
+                .retryPolicy(new ExponentialBackoffRetry(1000,3))
+                .build();
+
+        client.start();
+
+        String path="/barrier2";
+        int n=100;
+        for (int i=0;i<n;i++){
+            new Thread(new Runnable() {
+                @Override
+                public void run() {
+                    CuratorFramework client=CuratorFrameworkFactory.builder()
+                            .connectString(appVule.zkUrl)
+                            .retryPolicy(new ExponentialBackoffRetry(1000,3))
+                            .build();
+                    client.start();
+
+                    DistributedDoubleBarrier  auto_barrier=new DistributedDoubleBarrier(client,path,n);
+                    try {
+                        Thread.sleep(Math.round(Math.random()*3000));
+                    } catch (InterruptedException e) {
+                        e.printStackTrace();
+                    }
+                    log.info("进入barrier");
+                    try {
+                        auto_barrier.enter();
+                        log.info("启动...");
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
+                    ;
+                    try {
+                        Thread.sleep(Math.round(Math.random()*3000));
+                    } catch (InterruptedException e) {
+                        e.printStackTrace();
+                    }
+                    try {
+                        auto_barrier.leave();
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
+                }
+            }).start();
+        }
+
+        Thread.sleep(1000*30);
+        return ApiResult.success(1);
+    }
 
 }
