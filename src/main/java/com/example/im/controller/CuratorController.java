@@ -2,6 +2,7 @@ package com.example.im.controller;
 
 import com.example.im.common.util.ApiResult;
 import com.example.im.common.util.Constants.AppVule;
+import com.example.im.common.util.MyStringUtil;
 import org.apache.curator.CuratorZookeeperClient;
 import org.apache.curator.RetryPolicy;
 import org.apache.curator.framework.CuratorFramework;
@@ -404,6 +405,31 @@ public class CuratorController {
         }
 
         Thread.sleep(1000*30);
+        return ApiResult.success(1);
+    }
+
+
+
+    //创建大数据节点,直接塞入大数据会报连接丢失,目前每次1k的塞入,数据的增加,日志也在增大,64m为一个日志文件单元,
+
+    @RequestMapping(value = "/createbigdata", method = RequestMethod.POST)
+    @ResponseBody
+    public ApiResult createbigdata(@RequestParam Map map) throws Exception {
+        String path="/bigdata/d";
+        CuratorFramework client=CuratorFrameworkFactory.builder()
+                .connectString(appVule.zkUrl)
+                .sessionTimeoutMs(1000*120)
+                .retryPolicy(new ExponentialBackoffRetry(1000*120,3))
+                .build();
+
+        client.start();
+        for (int i=0;i<1024*100;i++){
+            client.create().creatingParentsIfNeeded()
+                    .withMode(CreateMode.PERSISTENT)
+                    .forPath(path+i+"",MyStringUtil.getLongStr().toString().getBytes());
+        }
+
+        log.info("创建成功");
         return ApiResult.success(1);
     }
 
