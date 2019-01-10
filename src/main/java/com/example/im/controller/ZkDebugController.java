@@ -34,9 +34,6 @@ public class ZkDebugController {
     @Autowired
     private AppVule appVule;
 
-    @Controller
-    @RequestMapping("/zkDebug")
-    public class ZKController  {
 
 
 
@@ -69,4 +66,4 @@ public class ZkDebugController {
 
 
 
-}
+
